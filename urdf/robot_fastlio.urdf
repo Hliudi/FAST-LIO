@@ -1,0 +1,147 @@
+<?xml version="1.0"?>
+<!-- ===================================================================== -->
+<!--  robot_fastlio.urdf  —  minimal, self-contained robot for FAST-LIO2   -->
+<!--                          in Gazebo Classic (gazebo_ros / Humble).      -->
+<!--                                                                        -->
+<!--  NO external meshes: base_link is a plain box, lidar_link a cylinder,  -->
+<!--  so this spawns anywhere with zero asset dependencies.                 -->
+<!--                                                                        -->
+<!--  Three Gazebo plugins reproduce the working nav_ws_bbs pipeline:       -->
+<!--    (a) lidar3d  : 3D ray LiDAR  -> sensor_msgs/PointCloud2 /lidar3d/points -->
+<!--    (b) imu      : IMU           -> sensor_msgs/Imu         /imu            -->
+<!--    (c) planar_move: /cmd_vel in -> nav_msgs/Odometry ground truth /odom_gt -->
+<!--                     (publish_odom_tf=false so FAST-LIO owns odom->base_link) -->
+<!-- ===================================================================== -->
+<robot name="fastlio_bot">
+
+  <!-- ============================ base_link ============================ -->
+  <!-- ~0.5 x 0.5 x 0.4 m box. base_link frame sits at ground contact;     -->
+  <!-- the box is centered at z=0.2 so it spans 0.0 .. 0.4 m.              -->
+  <link name="base_link">
+    <collision name="base_collision">
+      <origin rpy="0 0 0" xyz="0 0 0.2"/>
+      <geometry><box size="0.5 0.5 0.4"/></geometry>
+    </collision>
+    <visual name="base_visual">
+      <origin rpy="0 0 0" xyz="0 0 0.2"/>
+      <geometry><box size="0.5 0.5 0.4"/></geometry>
+      <material name="base_blue"><color rgba="0.2 0.4 0.8 1"/></material>
+    </visual>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0.2"/>
+      <mass value="30.0"/>
+      <!-- box inertia for 30 kg, 0.5x0.5x0.4: Ixx=Iyy=1.025, Izz=1.25 -->
+      <inertia ixx="1.025" ixy="0" ixz="0" iyy="1.025" iyz="0" izz="1.25"/>
+    </inertial>
+  </link>
+
+  <!-- ============================ lidar_link =========================== -->
+  <!-- Fixed 0.35 m above base_link. LiDAR and IMU are BOTH attached here,  -->
+  <!-- so in the FAST-LIO config the lidar->imu extrinsic is identity.      -->
+  <link name="lidar_link">
+    <inertial>
+      <origin xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry><cylinder radius="0.04" length="0.05"/></geometry>
+      <material name="lidar_black"><color rgba="0.1 0.1 0.1 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry><cylinder radius="0.04" length="0.05"/></geometry>
+    </collision>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0 0 0.35" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Gazebo visual materials (Classic uses its own material names) -->
+  <gazebo reference="base_link"><material>Gazebo/Blue</material></gazebo>
+  <gazebo reference="lidar_link"><material>Gazebo/Black</material></gazebo>
+
+  <!-- ================= (c) planar_move: drive + ground truth ============ -->
+  <!-- Consumes /cmd_vel and moves the base on the XY plane. Publishes a    -->
+  <!-- ground-truth odometry on /odom_gt for comparison against FAST-LIO.   -->
+  <!-- publish_odom_tf MUST be false: FAST-LIO owns the odom->base_link TF.  -->
+  <gazebo>
+    <plugin name="planar_move" filename="libgazebo_ros_planar_move.so">
+      <ros>
+        <namespace>/</namespace>
+        <remapping>cmd_vel:=cmd_vel</remapping>
+        <remapping>odom:=odom_gt</remapping>
+      </ros>
+      <update_rate>50</update_rate>
+      <publish_rate>50</publish_rate>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>false</publish_odom_tf>
+      <covariance_x>0.0001</covariance_x>
+      <covariance_y>0.0001</covariance_y>
+      <covariance_yaw>0.001</covariance_yaw>
+    </plugin>
+  </gazebo>
+
+  <!-- ============ (a) 3D ray LiDAR + (b) IMU, on lidar_link ============= -->
+  <gazebo reference="lidar_link">
+
+    <!-- (a) 16-line, +/-15 deg vertical, 180 az over 360 deg, 0.3-50 m, 10 Hz.
+         Output sensor_msgs/PointCloud2 on /lidar3d/points (frame lidar_link).
+         Values copied verbatim from nav_ws_bbs/sim/s1_gazebo_fastlio.urdf.
+
+         REAL ROBOT = Livox Mid-360 (360 deg x 59 deg, vertical -7..+52 deg).
+         To approximate it here, widen the <vertical> block, e.g.
+            <vertical><samples>32</samples><resolution>1</resolution>
+              <min_angle>-0.122</min_angle><max_angle>0.908</max_angle></vertical>
+         and set scan_line accordingly in mid360_sim.yaml. The default stays
+         16-line +/-15 deg for simplicity and light CPU load. -->
+    <sensor name="lidar3d" type="ray">
+      <pose>0 0 0 0 0 0</pose>
+      <update_rate>10</update_rate>
+      <ray>
+        <scan>
+          <horizontal><samples>180</samples><resolution>1</resolution>
+            <min_angle>-3.14159</min_angle><max_angle>3.14159</max_angle></horizontal>
+          <vertical><samples>16</samples><resolution>1</resolution>
+            <min_angle>-0.2618</min_angle><max_angle>0.2618</max_angle></vertical>
+        </scan>
+        <range><min>0.3</min><max>50.0</max><resolution>0.01</resolution></range>
+        <noise><type>gaussian</type><mean>0.0</mean><stddev>0.01</stddev></noise>
+      </ray>
+      <plugin name="lidar3d_ros" filename="libgazebo_ros_ray_sensor.so">
+        <ros><namespace>/</namespace><remapping>~/out:=lidar3d/points</remapping></ros>
+        <output_type>sensor_msgs/PointCloud2</output_type>
+        <frame_name>lidar_link</frame_name>
+      </plugin>
+    </sensor>
+
+    <!-- (b) IMU at 200 Hz -> sensor_msgs/Imu on /imu (frame lidar_link). -->
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>200</update_rate>
+      <plugin name="imu_ros" filename="libgazebo_ros_imu_sensor.so">
+        <ros><namespace>/</namespace><remapping>~/out:=imu</remapping></ros>
+        <frame_name>lidar_link</frame_name>
+        <initial_orientation_as_reference>false</initial_orientation_as_reference>
+      </plugin>
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0</mean><stddev>0.001</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>0.001</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.001</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+
+  </gazebo>
+</robot>

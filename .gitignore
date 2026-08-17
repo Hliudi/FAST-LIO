@@ -1,0 +1,15 @@
+# ROS 2 / colcon
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+
+# FAST-LIO core artifacts (offline tool writes ./data, maps are large)
+data/
+*.pcd
+
+# direnv / nix (fast_lio_core ships a flake)
+.direnv/

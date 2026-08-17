@@ -1,0 +1,5 @@
+This directory is the header-only FAST-LIO core. It is intentionally NOT a
+colcon package: the fastlio2_ros2 wrapper compiles the needed core sources
+(ikd_Tree.cpp, preprocess.cpp) directly via the ../../fast_lio_core relative
+path in its CMakeLists.txt. This COLCON_IGNORE keeps `colcon build` focused on
+the two ROS 2 packages (livox_interfaces, fastlio2_ros2).
